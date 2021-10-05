@@ -1,5 +1,9 @@
-use core::fmt;
 use crate::AbstractPerfCounter;
+
+pub enum ErrorMsg {
+    CounerInUse,
+    UnsupportedEvent,
+}
 
 pub struct PerfCounter{
     version_identifier:u8,
@@ -97,19 +101,19 @@ impl  PerfCounter{
 }
 
 impl<'a> AbstractPerfCounter for PerfCounter {
-    fn reset(&self) -> Result<(), fmt::Error> {
+    fn reset(&self) -> Result<(),ErrorMsg> {
         Ok(())
     }
 
-    fn start(&self) -> Result<(), fmt::Error> {
+    fn start(&self) -> Result<(), ErrorMsg> {
         Ok(())
     }
 
-    fn stop(&self) -> Result<(), fmt::Error> {
+    fn stop(&self) -> Result<(), ErrorMsg> {
         Ok(())
     }
 
-    fn read(&mut self) -> Result<u64, fmt::Error> {
+    fn read(&mut self) -> Result<u64, ErrorMsg> {
         return Ok(0);
     }
 }
