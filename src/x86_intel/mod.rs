@@ -1,5 +1,6 @@
 use crate::AbstractPerfCounter;
-use x86::{msr::*, perfcnt::intel::*};
+use x86::{msr::*, perfcnt::intel::{ EventDescription,Counter,Tuple}};
+
 
 pub enum ErrorMsg {
     CounterInUse,
@@ -62,7 +63,7 @@ impl  PerfCounter{
         }
     }
 
-    pub fn build_from_intel_hw_event(&mut self,event:&EventDescription,index:u8)->Result<(),ErrorMsg>{
+    pub fn build_from_intel_hw_event(&mut self,event:&EventDescription,index:u8,is_user_enabled:bool,is_os_enabled:bool)->Result<(),ErrorMsg>{
 
         match event.counter{
 
@@ -101,12 +102,29 @@ impl  PerfCounter{
             if event.invert {
                 config |= 1 << 23;
             }
+            if is_user_enabled{
+                config |= 1 <<16;
+            }
+            if is_os_enabled{
+                config |= 1 <<17;
+            }
             self.general_pmc_mask = config | ENABLE_GENERAL_PMC_MASK;
             
             }
+
+            
         }
 
         Ok(())
+    }
+
+    pub fn build_general_from_raw(&mut self,eventmask:u32,umask:u32,user_enabled:bool,os_enabled:bool,counter_mask:u8,edge_detect:bool,pmc_index:u8){
+        self.general_pmc_mask = 0;
+        self.general_pmc_mask |= (eventmask & 0xFF)as u64;
+        self.general_pmc_mask |= ((umask<<8) & (0xFF<<8)) as u64;
+        self.general_pmc_mask |= (((user_enabled as u64) <<16) & (0x1<<16)) as u64;
+        self.general_pmc_mask |= (((os_enabled as u64)<<17) & (0x1<<17)) as u64;
+        self.general_pmc_mask |= ENABLE_GENERAL_PMC_MASK;
     }
 
     pub fn get_version_identifier(&self)-> u8{

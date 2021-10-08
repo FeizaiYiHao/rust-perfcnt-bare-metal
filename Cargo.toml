@@ -1,5 +1,5 @@
 [package]
-name = "rust-perfcnt-bare-metal"
+name = "rust_perfcnt_bare_metal"
 version = "0.1.0"
 edition = "2021"
 
