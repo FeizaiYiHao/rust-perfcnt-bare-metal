@@ -1,6 +1,20 @@
 use crate::AbstractPerfCounter;
 use x86::{msr::*, perfcnt::intel::{ EventDescription,Counter,Tuple}};
 
+pub static mut counter:PerfCounter = PerfCounter{
+    version_identifier : 0,
+    number_msr : 0,
+    bit_width :  0, 
+    events_available : 0,
+    number_fixed_function_counter : 0,
+    bit_width_fixed_counter : 0,
+    unavailable_events_vec : 0,
+    pmc_index: 0,
+    counter_type: Counter::Programmable(0),
+    general_pmc_mask: 0,
+    fixed_pmc_ring_lv: 0,
+    is_fixed_pmc_pmi_enabled: false,
+};
 
 pub enum ErrorMsg {
     CounterInUse,
@@ -11,26 +25,94 @@ pub enum ErrorMsg {
 
 pub const ENABLE_GENERAL_PMC_MASK: u64 = 0x1<<22;
 
+pub fn clear_overflow_bit(c:Counter){
+    match c {
+        Counter::Fixed(index) => {
+            let v = read_overflow_ctrl();
+            let v_tmp = v | (1<<(index+32));
+            set_overflow_ctrl(v_tmp);  
+            set_overflow_ctrl(v);  
+        },
+        Counter::Programmable(index) => {
+            let v = read_overflow_ctrl();
+            let v_tmp = v | (1<<index);
+            set_overflow_ctrl(v_tmp);  
+            set_overflow_ctrl(v);  
+        },
+    }
+}
 
+pub fn reset_overflow_interrput(){
+    let mask:u32 = !(1<<16);
+    unsafe{
+        let edx:u32 = 0xFEE00340;
+        let eax:u32 = 0x000000E2;
+        asm!("MOV [edx],eax",
+        in("edx") edx,
+        in("eax") eax,
+        );
+    }
+}
+
+pub fn read_overflow_status()->u64{
+    unsafe{
+        rdmsr(0x38E)
+    }
+}
+
+pub fn set_overflow_status(value:u64){
+    unsafe{
+        wrmsr(0x38E,value)
+    }
+}
+
+pub fn read_overflow_ctrl()->u64{
+    unsafe{
+        rdmsr(0x390)
+    }
+}
+
+pub fn set_overflow_ctrl(value:u64){
+    unsafe{
+        wrmsr(0x390,value)
+    }
+}
 pub struct PerfCounter{
-    version_identifier:u8,
-    number_msr:u8,
-    bit_width:u8,
-    events_available:u8,
-    number_fixed_function_counter:u8,
-    bit_width_fixed_counter:u8,
-    unavailable_events_vec:u8,
-    pmc_index:u8,    
-    counter_type:Counter,
-    general_pmc_mask:u64,
-    fixed_pmc_ring_lv:u8, //0 for disable, 1 for OS, 2 for USER, 3 for ALL
-    is_fixed_pmc_pmi_enabled:bool,
+    pub version_identifier:u8,
+    pub number_msr:u8,
+    pub bit_width:u8,
+    pub events_available:u8,
+    pub number_fixed_function_counter:u8,
+    pub bit_width_fixed_counter:u8,
+    pub unavailable_events_vec:u8,
+    pub pmc_index:u8,    
+    pub counter_type:Counter,
+    pub general_pmc_mask:u64,
+    pub fixed_pmc_ring_lv:u8, //0 for disable, 1 for OS, 2 for USER, 3 for ALL
+    pub is_fixed_pmc_pmi_enabled:bool,
 }
 
 
 
 impl  PerfCounter{
-    pub fn new()->PerfCounter{
+    pub fn new() -> PerfCounter{
+        PerfCounter{
+            version_identifier : 0,
+            number_msr : 0,
+            bit_width :  0, 
+            events_available : 0,
+            number_fixed_function_counter : 0,
+            bit_width_fixed_counter : 0,
+            unavailable_events_vec : 0,
+            pmc_index: 0,
+            counter_type: Counter::Programmable(0),
+            general_pmc_mask: 0,
+            fixed_pmc_ring_lv: 0,
+            is_fixed_pmc_pmi_enabled: false,
+        }
+    }
+
+    pub fn init(&mut self){
             let mut rax :u64;
             let mut rdx :u64;
             let mut rbx :u64;
@@ -47,23 +129,23 @@ impl  PerfCounter{
            
         } 
         let mask:u64 =  255;
-        PerfCounter{
-            version_identifier : (rax & mask) as u8,
-            number_msr : ((rax >> 8) & mask) as u8,
-            bit_width :  if rax & mask == 0 {((rax >> 16) & mask) as u8} else {40 as u8}, 
-            events_available : ((rax >> 24) & mask )as u8,
-            number_fixed_function_counter : (rdx & 31 )as u8,
-            bit_width_fixed_counter : (rdx>>5 & 127) as u8,
-            unavailable_events_vec : (rbx & mask) as u8,
-            pmc_index: 0,
-            counter_type: Counter::Programmable(0),
-            general_pmc_mask: 0,
-            fixed_pmc_ring_lv: 0,
-            is_fixed_pmc_pmi_enabled: false,
-        }
+        
+            self.version_identifier = (rax & mask) as u8;
+            self.number_msr = ((rax >> 8) & mask) as u8;
+            self.bit_width =  if rax & mask == 0 {((rax >> 16) & mask) as u8} else {40 as u8};
+            self.events_available = ((rax >> 24) & mask )as u8;
+            self.number_fixed_function_counter = (rdx & 31 )as u8;
+            self.bit_width_fixed_counter = (rdx>>5 & 127) as u8;
+            self.unavailable_events_vec = (rbx & mask) as u8;
+            self.pmc_index = 0;
+            self.counter_type = Counter::Programmable(0);
+            self.general_pmc_mask = 0;
+            self.fixed_pmc_ring_lv = 0;
+            self.is_fixed_pmc_pmi_enabled = false;
+        
     }
 
-    pub fn build_from_intel_hw_event(&mut self,event:&EventDescription,index:u8,is_user_enabled:bool,is_os_enabled:bool)->Result<(),ErrorMsg>{
+    pub fn build_from_intel_hw_event(&mut self,event:&EventDescription,index:u8,)->Result<(),ErrorMsg>{
 
         match event.counter{
 
@@ -76,7 +158,7 @@ impl  PerfCounter{
 
 
             Counter::Programmable(_) => 
-            if index > self.number_msr{
+            if index >= self.number_msr{
                 return Err(ErrorMsg::CounterOutOfRange);
             }else{
                 self.pmc_index = index;
@@ -102,12 +184,7 @@ impl  PerfCounter{
             if event.invert {
                 config |= 1 << 23;
             }
-            if is_user_enabled{
-                config |= 1 <<16;
-            }
-            if is_os_enabled{
-                config |= 1 <<17;
-            }
+            
             self.general_pmc_mask = config | ENABLE_GENERAL_PMC_MASK;
             
             }
@@ -116,6 +193,18 @@ impl  PerfCounter{
         }
 
         Ok(())
+    }
+
+    pub fn include_os_general_pmc(&mut self){
+        self.general_pmc_mask |= 1<<17;
+    }
+
+    pub fn include_user_general_pmc(&mut self){
+        self.general_pmc_mask |= 1<<16;
+    }
+
+    pub fn enable_interrupt_general_pmc(&mut self){
+        self.general_pmc_mask |= 1<<20;
     }
 
     pub fn build_general_from_raw(&mut self,eventmask:u32,umask:u32,user_enabled:bool,os_enabled:bool,counter_mask:u8,edge_detect:bool,pmc_index:u8){
@@ -177,7 +266,13 @@ impl  PerfCounter{
                 out("rdx") rdx,
             );
         } 
-        (rax<<32>>32) | rdx<<32
+        let reading = ((rax<<32>>32) | rdx<<32) & ((0x1<<self.bit_width)-1);
+
+        /*if self.check_overflow(){
+            return reading + (0x1 << self.get_bit_width());
+        }*/
+        reading
+
     }
 
     pub fn read_fixed_pmc_ctr(&self, index:u8)->u64{
@@ -193,7 +288,12 @@ impl  PerfCounter{
                 out("rdx") rdx,
             );
         } 
-        (rax<<32>>32) | rdx<<32
+        let reading = ((rax<<32>>32) | rdx<<32) & ((0x1<<self.bit_width_fixed_counter)-1);
+
+        /*if self.check_overflow(){
+            return reading + (0x1 << self.get_bit_width());
+        }*/
+        reading
     }
 
     pub fn set_general_pmc_ctr(&self, index:u8,value:u64){
@@ -321,6 +421,42 @@ impl  PerfCounter{
             ret = ret & (mask>>(index + 32) > 0);
         }
         ret
+    }
+
+    pub fn read_overflow_status(&self)->u64{
+        unsafe{
+            rdmsr(0x38E)
+        }
+    }
+    
+    pub fn set_overflow_status(&self,value:u64){
+        unsafe{
+            wrmsr(0x38E,value)
+        }
+    }
+
+    pub fn read_overflow_ctrl(&self)->u64{
+        unsafe{
+            rdmsr(0x390)
+        }
+    }
+
+    pub fn set_overflow_ctrl(&self,value:u64){
+        unsafe{
+            wrmsr(0x390,value)
+        }
+    }
+
+    pub fn check_overflow(&self)->bool{
+        match self.get_counter_type(){
+            Counter::Programmable(_) => {
+                return self.read_overflow_status() & (0x1 << self.get_pmc_index()) > 0
+                
+            }
+            Counter::Fixed(_) => {
+                return self.read_overflow_status() & (0x1 << (self.get_pmc_index()+32)) > 0
+            }
+        }
     }
 }
 
