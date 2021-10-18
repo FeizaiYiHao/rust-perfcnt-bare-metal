@@ -19,8 +19,7 @@ pub struct PerfCounter{
     pub counter_type:Counter,
     pub pmc_index:u8,  
     pub general_pmc_mask:u64,
-    pub fixed_pmc_ring_lv:u8, //0 for disable, 1 for OS, 2 for USER, 3 for ALL
-    pub is_pmc_pmi_enabled:bool,
+    pub fixed_pmc_mask:u64,
 }
 
 
@@ -32,8 +31,7 @@ impl  PerfCounter{
             pmc_index: 0,
             counter_type: Counter::Programmable(0),
             general_pmc_mask: 0,
-            fixed_pmc_ring_lv: 0,
-            is_pmc_pmi_enabled: false,
+            fixed_pmc_mask: 0,
         }
     }
 
@@ -46,6 +44,12 @@ impl  PerfCounter{
                 return Err(ErrorMsg::UnsupportedFixPMC);
             }else if index > self.global_ctrler.get_number_fixed_function_counter(){
                     return Err(ErrorMsg::CounterOutOfRange);
+            }else{
+                self.counter_type = event.counter;
+                self.fixed_pmc_mask= 1<<3 + 3;
+                if event.any_thread{
+                    self.fixed_pmc_mask |= 4;
+                }
             }
 
 
@@ -54,7 +58,7 @@ impl  PerfCounter{
                 return Err(ErrorMsg::CounterOutOfRange);
             }else{
                 self.pmc_index = index;
-                self.counter_type = event.counter;
+                self.counter_type = Counter::Programmable(index);
                 let mut config: u64 = 0;
 
                 match event.event_code {
@@ -75,8 +79,11 @@ impl  PerfCounter{
             }
             if event.invert {
                 config |= 1 << 23;
-            }   
+            }
+            config |= 1<<17;
+            config |= 1<<16;
             self.general_pmc_mask = config | ENABLE_GENERAL_PMC_MASK;
+            
             }
         }
         }
@@ -92,16 +99,39 @@ impl  PerfCounter{
         self.general_pmc_mask |= ENABLE_GENERAL_PMC_MASK;
     }
 
-    pub fn include_os_general_pmc(&mut self){
-        self.general_pmc_mask |= 1<<17;
+    pub fn exnclude_os(&mut self){
+        match self.get_counter_type(){
+            Counter::Fixed(_) => {
+                self.fixed_pmc_mask &= !(1<<0);
+            },
+            Counter::Programmable(_) =>{
+                self.general_pmc_mask &= !(1<<17);
+            },
+        }
     }
 
-    pub fn include_user_general_pmc(&mut self){
-        self.general_pmc_mask |= 1<<16;
+    pub fn exclude_user(&mut self){
+        match self.get_counter_type(){
+            Counter::Fixed(_) => {
+                self.fixed_pmc_mask &= !(1<<1);
+            },
+            Counter::Programmable(_) =>{
+                self.general_pmc_mask &= !(1<<16);
+            },
+        }
+        //self.general_pmc_mask &= !(1<<16);
     }
 
-    pub fn enable_interrupt_general_pmc(&mut self){
-        self.general_pmc_mask |= 1<<20;
+    pub fn disable_interrupt(&mut self){
+        match self.get_counter_type(){
+            Counter::Fixed(_) => {
+                self.fixed_pmc_mask &= !(1<<3);
+            },
+            Counter::Programmable(_) =>{
+                self.general_pmc_mask &= !(1<<20);
+            },
+        }
+        //self.general_pmc_mask &= !(1<<20);
     }
 
     pub fn get_pmc_index(&self)-> u8{
@@ -113,11 +143,8 @@ impl  PerfCounter{
     pub fn get_general_pmc_mask(&self)-> u64{
         self.general_pmc_mask
     }
-    pub fn get_fixed_pmc_ring_lv(&self)->u8{
-        self.fixed_pmc_ring_lv
-    }
-    pub fn get_is_pmc_pmi_enabled(&self)->bool{
-        self.is_pmc_pmi_enabled
+    pub fn get_fixed_pmc_mask(&self)->u64{
+        self.fixed_pmc_mask
     }
 
     pub fn read_general_pmc_ctr(&self, index:u8)->u64{
@@ -241,7 +268,7 @@ impl  PerfCounter{
         }*/
         self.global_ctrler.enable_counter(self.counter_type);
         let rcx:u32 = 0x38D ;
-        let rax:u64 = ((if self.get_is_pmc_pmi_enabled(){1}else{0}<<3 + self.get_fixed_pmc_ring_lv())<< (index * 4)) as u64 ; 
+        let rax:u64 = (self.get_fixed_pmc_mask()<< (index * 4)) as u64 ; 
        unsafe{ wrmsr(rcx as u32, rdmsr(rcx) &(!(15<<(index*4)))|rax);}
     }
 
