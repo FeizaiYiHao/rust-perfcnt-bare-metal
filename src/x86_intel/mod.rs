@@ -1,3 +1,11 @@
+//! Performance counter for a single progammeable or fixed PMC.
+//! 
+//! Must have a PerfCounterControler instance.
+//! 
+//! Have two general usages:
+//! 1. Record and Read the occurance of a hardware event through reset() start() read() and stop()
+//! 2. Generate a Performance Monitoring Interrupt (PMI) when hitting a certain number of the hardware event through 
+//!     globle_ctrl.register_overflow_interrput(), overflow_after() globle_ctrl.get_overflow_counter(), reset() and globle_ctrl.reset_overflow_interrput().
 use crate::AbstractPerfCounter;
 pub mod globle_ctrl;
 use globle_ctrl::PerfCounterControler;
@@ -35,8 +43,10 @@ impl  PerfCounter{
         }
     }
 
+    ///Build a PerfCounter for one pmc_msr (programmable or fixed) from x86::perfcnt::intel::description
+    /// 
+    ///Arg index indicates the index of programmable pmc_msr intended to use. It is not used when using fixed_pmc--can input any value.
     pub fn build_from_intel_hw_event(&mut self,event:&EventDescription,index:u8,)->Result<(),ErrorMsg>{
-        unsafe{
         match event.counter{
 
             Counter::Fixed(index)=> 
@@ -86,10 +96,10 @@ impl  PerfCounter{
             
             }
         }
-        }
         Ok(())
     }
 
+    ///Build a PerfCounter for one programmable_pmc_ms from raw eventmask and other attributes.
     pub fn build_general_from_raw(&mut self,eventmask:u32,umask:u32,user_enabled:bool,os_enabled:bool,counter_mask:u8,edge_detect:bool,pmc_index:u8){
         self.general_pmc_mask = 0;
         self.general_pmc_mask |= (eventmask & 0xFF)as u64;
@@ -99,6 +109,8 @@ impl  PerfCounter{
         self.general_pmc_mask |= ENABLE_GENERAL_PMC_MASK;
     }
 
+
+    ///Counter will not increment in ring 4
     pub fn exnclude_os(&mut self){
         match self.get_counter_type(){
             Counter::Fixed(_) => {
@@ -110,6 +122,7 @@ impl  PerfCounter{
         }
     }
 
+    ///Counter will not increment in ring 0
     pub fn exclude_user(&mut self){
         match self.get_counter_type(){
             Counter::Fixed(_) => {
@@ -122,6 +135,7 @@ impl  PerfCounter{
         //self.general_pmc_mask &= !(1<<16);
     }
 
+    ///Counter will not produce PMI when overflow
     pub fn disable_interrupt(&mut self){
         match self.get_counter_type(){
             Counter::Fixed(_) => {

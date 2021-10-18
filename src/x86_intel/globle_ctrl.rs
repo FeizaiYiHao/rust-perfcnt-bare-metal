@@ -1,5 +1,11 @@
-use x86::{msr::{rdmsr, wrmsr}, perfcnt::intel::Counter};
+//! This is the controler for IA32_PERF_GLOBAL_STATUS, IA32_PERF_GLOBAL_OVF_CTRL and  IA32_PERF_GLOBAL_CTRL MSRs.
+//! 
+//! OS should obtain one instance of the controler before constrcuting any PerfCounter.
+//! 
+//! Must call init() before use.
+//! 
 
+use x86::{msr::{rdmsr, wrmsr}, perfcnt::intel::Counter};
 use crate::ErrorMsg;
 
 pub struct PerfCounterControler{
@@ -25,6 +31,7 @@ impl  PerfCounterControler{
         }
     }
 
+    ///This must be called. 
     pub fn init(&mut self){
         let mut rax :u64;
         let mut rdx :u64;
@@ -72,6 +79,7 @@ impl  PerfCounterControler{
         self.unavailable_events_vec
     }
     
+    ///Will clear overflow indicator for corresponding pmc in IA32_PERF_GLOBAL_STATUS
     pub fn clear_overflow_bit(&self, c:Counter){
         match c {
             Counter::Fixed(index) => {
@@ -89,6 +97,9 @@ impl  PerfCounterControler{
         }
     }
 
+    ///After one overflow PMI occurrence, the following PMI will be masked.
+    /// This function clears the mask and enables future PMIs.
+    /// Should probably be called in interrput handler.
     pub fn reset_overflow_interrput(&self){
         let mask:u32 = !(1<<16);
         unsafe{
@@ -101,7 +112,9 @@ impl  PerfCounterControler{
         }
     }
 
-    pub fn set_overflow_interrput(&self){
+    ///Start generating PMI on pmc overflow.
+    /// Use get_overflow_counter() to find out which counter overflows.
+    pub fn register_overflow_interrput(&self, interrput_vec:u64){
         let mask:u32 = !(1<<16);
         unsafe{
             let edx:u32 = 0xFEE00340;
@@ -140,6 +153,8 @@ impl  PerfCounterControler{
         }
     }
 
+    ///Set enable bit for the counter in IA32_PERF_GLOBAL_CTL.
+    /// Also need to set enable bit in the specific pmc_ctl MSR to enable the counter
     pub fn enable_counter(&self,c:Counter){
         if self.get_version_identifier() >= 2{
             match c {
@@ -155,6 +170,10 @@ impl  PerfCounterControler{
         }
     }
 
+    ///Clear enable bit for the counter in IA32_PERF_GLOBAL_CTL.
+    /// counter is disable if one of the following is clear:
+    ///  enable bit in  pmc_ctl MSR or
+    ///  enable bit in IA32_PERF_GLOBAL_CTL
     pub fn disable_counter(&self,c:Counter){
         if self.get_version_identifier() >= 2{
             match c {
@@ -194,6 +213,8 @@ impl  PerfCounterControler{
         }
     }
 
+    ///Get the overflowe counter during a PMI.
+    /// Should only overflow one counter at a time.
     pub fn get_overflow_counter(&self) -> Option<Counter>{
             let reading = self.read_overflow_status();
             for i in 0..63{
@@ -224,6 +245,7 @@ impl  PerfCounterControler{
         ret
     }
 
+
     pub fn check_if_fixed_pmc_is_in_use(&self,index:u8)->bool{
         let mut ret:bool;
         unsafe{
@@ -234,6 +256,15 @@ impl  PerfCounterControler{
             ret = ret & (mask>>(index + 32) > 0);
         }
         ret
+    }
+
+    ///Check if the counter is in use
+    /// Should call before start()
+    pub fn check_in_use(&self,c:Counter)->bool{
+        match c{
+            Counter::Fixed(index) => self.check_if_fixed_pmc_is_in_use(index),
+            Counter::Programmable(index) => self.check_if_general_pmc_is_in_use(index),
+        }
     }
 }
 
