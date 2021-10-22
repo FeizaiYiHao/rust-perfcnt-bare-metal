@@ -92,6 +92,7 @@ impl  PerfCounter{
             }
             config |= 1<<17;
             config |= 1<<16;
+            config |= 1<<20;
             self.general_pmc_mask = config | ENABLE_GENERAL_PMC_MASK;
             
             }
@@ -107,6 +108,9 @@ impl  PerfCounter{
         self.general_pmc_mask |= (((user_enabled as u64) <<16) & (0x1<<16)) as u64;
         self.general_pmc_mask |= (((os_enabled as u64)<<17) & (0x1<<17)) as u64;
         self.general_pmc_mask |= ENABLE_GENERAL_PMC_MASK;
+        self.general_pmc_mask |= (counter_mask as u64) << 24;
+        self.general_pmc_mask |= if edge_detect {1<<18}else{0};
+        self.counter_type = Counter::Programmable(pmc_index);
     }
 
 
@@ -175,7 +179,7 @@ impl  PerfCounter{
             );
         
         let reading = ((rax<<32>>32) | rdx<<32) & ((0x1<<self.global_ctrler.get_bit_width())-1);
-
+        // let reading = ((rax<<32>>32) | rdx<<32);
         /*if self.check_overflow(){
             return reading + (0x1 << self.get_bit_width());
         }*/
@@ -323,10 +327,10 @@ impl  PerfCounter{
     pub fn overflow_after(&self,value:u64){
         match self.get_counter_type(){
             Counter::Fixed(_) => {
-                self.set_general_pmc_ctr(self.get_pmc_index(), 1 - (value as i64) as u64);
+                self.set_general_pmc_ctr(self.get_pmc_index(), !value);
             },
             Counter::Programmable(_) => {
-                self.set_general_pmc_ctr(self.get_pmc_index(), 1 - (value as i64) as u64);
+                self.set_general_pmc_ctr(self.get_pmc_index(), !value);
             }
         }
     }

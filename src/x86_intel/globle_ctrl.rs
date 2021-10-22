@@ -50,7 +50,7 @@ impl  PerfCounterControler{
         let mask:u64 =  255;
         self.version_identifier = (rax & mask) as u8;
         self.number_msr = ((rax >> 8) & mask) as u8;
-        self.bit_width =  if rax & mask == 0 {((rax >> 16) & mask) as u8} else {40 as u8};
+        self.bit_width =  if rax & mask != 0 {((rax >> 16) & mask) as u8} else {40 as u8};
         self.events_available = ((rax >> 24) & mask )as u8;
         self.number_fixed_function_counter = (rdx & 31 )as u8;
         self.bit_width_fixed_counter = (rdx>>5 & 127) as u8;
@@ -102,9 +102,15 @@ impl  PerfCounterControler{
     /// Should probably be called in interrput handler.
     pub fn reset_overflow_interrput(&self){
         let mask:u32 = !(1<<16);
+        let mut eax:u32;
+        unsafe{
+            asm!("MOV eax, [0xFEE00340]",
+            out("eax") eax,
+            );
+        }
+        eax = eax & mask;
         unsafe{
             let edx:u32 = 0xFEE00340;
-            let eax:u32 = 0x000000E2;
             asm!("MOV [edx],eax",
             in("edx") edx,
             in("eax") eax,
@@ -114,11 +120,10 @@ impl  PerfCounterControler{
 
     ///Start generating PMI on pmc overflow.
     /// Use get_overflow_counter() to find out which counter overflows.
-    pub fn register_overflow_interrput(&self, interrput_vec:u64){
-        let mask:u32 = !(1<<16);
+    pub fn register_overflow_interrput(&self, interrput_vec:u8){
         unsafe{
-            let edx:u32 = 0xFEE00340;
-            let eax:u32 = 0x000000E2;
+            let edx:u32 = 0xFEE00340; //APIC PMC register 
+            let eax:u64 = interrput_vec as u64;
             asm!("MOV [edx],eax",
             in("edx") edx,
             in("eax") eax,
@@ -160,11 +165,11 @@ impl  PerfCounterControler{
             match c {
                 Counter::Fixed(index) => {
                     let bits = self.read_globle_ctrl_bits().unwrap();
-                    self.set_globle_ctrl(bits & (1<<(index + 32)));
+                    self.set_globle_ctrl(bits | (1<<(index + 32)));
                 },
                 Counter::Programmable(index) => {
                     let bits = self.read_globle_ctrl_bits().unwrap();
-                    self.set_globle_ctrl(bits & (1<<(index )));
+                    self.set_globle_ctrl(bits | (1<<(index )));
                 },
             }
         }
