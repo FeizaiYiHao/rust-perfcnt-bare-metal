@@ -110,6 +110,7 @@ impl  PerfCounter{
         self.general_pmc_mask |= ENABLE_GENERAL_PMC_MASK;
         self.general_pmc_mask |= (counter_mask as u64) << 24;
         self.general_pmc_mask |= if edge_detect {1<<18}else{0};
+        self.general_pmc_mask |= 1 << 20;
         self.counter_type = Counter::Programmable(pmc_index);
     }
 
