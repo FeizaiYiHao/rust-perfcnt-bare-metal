@@ -103,16 +103,17 @@ impl  PerfCounterControler{
     pub fn reset_overflow_interrput(&self){
         let mask:u32 = !(1<<16);
         let mut eax:u32;
+        let rdx:u64 = 0xFEE00340;
         unsafe{
-            asm!("MOV eax, [0xFEE00340]",
+            asm!("MOV eax, [edx]",
+            in("rdx") rdx,
             out("eax") eax,
             );
         }
         eax = eax & mask;
         unsafe{
-            let edx:u32 = 0xFEE00340;
             asm!("MOV [edx],eax",
-            in("edx") edx,
+            in("rdx") rdx,
             in("eax") eax,
             );
         }
