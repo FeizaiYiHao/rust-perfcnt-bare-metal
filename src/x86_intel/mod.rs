@@ -55,9 +55,10 @@ impl  PerfCounter{
             }else if index > self.global_ctrler.get_number_fixed_function_counter(){
                     return Err(ErrorMsg::CounterOutOfRange);
             }else{
-                self.counter_type = event.counter;
+                self.counter_type = Counter::Fixed(index);
                 self.fixed_pmc_mask= 1<<3 + 3;
-                if event.any_thread{
+                self.pmc_index = index;
+                if event.any_thread && self.global_ctrler.get_version_identifier()>2{
                     self.fixed_pmc_mask |= 4;
                 }
             }
@@ -219,7 +220,7 @@ impl  PerfCounter{
         unsafe {wrmsr(0x186+index as u32, mask)}
     }
 
-    pub fn set_fixed_pmc_ctr(&self, value:u64,index:u8){
+    pub fn set_fixed_pmc_ctr(&self, index:u8,value:u64){
         let value = value & ((1<<self.global_ctrler.get_bit_width_fixed_counter()) - 1);
         unsafe {wrmsr(0x309+index as u32, value)}
     }
@@ -328,7 +329,7 @@ impl  PerfCounter{
     pub fn overflow_after(&self,value:u64){
         match self.get_counter_type(){
             Counter::Fixed(_) => {
-                self.set_general_pmc_ctr(self.get_pmc_index(), !value);
+                self.set_fixed_pmc_ctr(self.get_pmc_index(), !value);
             },
             Counter::Programmable(_) => {
                 self.set_general_pmc_ctr(self.get_pmc_index(), !value);
@@ -341,7 +342,7 @@ impl<'a> AbstractPerfCounter for PerfCounter {
     fn reset(&self) -> Result<(),ErrorMsg> {
         match self.get_counter_type(){
             Counter::Programmable(_) => self.set_general_pmc_ctr(self.get_pmc_index(),0),
-            Counter::Fixed(_) => self.set_fixed_pmc_ctr(0, self.get_pmc_index()),
+            Counter::Fixed(_) => self.set_fixed_pmc_ctr(self.get_pmc_index(),0),
         };
         Ok(())
     }
