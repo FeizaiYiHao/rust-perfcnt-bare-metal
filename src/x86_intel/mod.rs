@@ -56,7 +56,7 @@ impl  PerfCounter{
                     return Err(ErrorMsg::CounterOutOfRange);
             }else{
                 self.counter_type = Counter::Fixed(index);
-                self.fixed_pmc_mask= 1<<3 + 3;
+                self.fixed_pmc_mask= 0xB;
                 self.pmc_index = index;
                 if event.any_thread && self.global_ctrler.get_version_identifier()>2{
                     self.fixed_pmc_mask |= 4;
