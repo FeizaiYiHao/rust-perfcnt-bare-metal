@@ -213,7 +213,14 @@ impl  PerfCounter{
 
     pub fn set_general_pmc_ctr(&self, index:u8,value:u64){
         let value = value & ((1<<self.global_ctrler.get_bit_width()) - 1);
-        unsafe {wrmsr(IA32_A_PMC0+index as u32, value)}
+        unsafe {
+            if self.global_ctrler.get_perf_capability(){
+                wrmsr(IA32_A_PMC0+index as u32, value);
+            }
+            else{
+                wrmsr(IA32_PMC0+index as u32, value)
+            }
+        }
     }
 
     pub fn set_general_pmc_ctrl(&self, mask:u64,index:u8){

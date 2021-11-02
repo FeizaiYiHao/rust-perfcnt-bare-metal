@@ -16,6 +16,7 @@ pub struct PerfCounterControler{
     number_fixed_function_counter:u8,
     bit_width_fixed_counter:u8,
     unavailable_events_vec:u8,
+    perf_capability: bool,
 }
 
 impl  PerfCounterControler{
@@ -28,6 +29,7 @@ impl  PerfCounterControler{
             number_fixed_function_counter:0,
             bit_width_fixed_counter:0,
             unavailable_events_vec:0,
+            perf_capability:false,
         }
     }
 
@@ -55,6 +57,26 @@ impl  PerfCounterControler{
         self.number_fixed_function_counter = (rdx & 31 )as u8;
         self.bit_width_fixed_counter = (rdx>>5 & 127) as u8;
         self.unavailable_events_vec = (rbx & mask) as u8;
+        unsafe{
+            let mut rcx :u64;
+            asm!(
+                "MOV EAX, 01H",
+                "CPUID",
+                "MOV R8, RBX",
+               out("rcx") rcx,
+            );
+            if (rcx >> 15)& 1 == 1{
+                self.perf_capability = (rdmsr(x86::msr::IA32_PERF_CAPABILITIES)>>13 & 0x1) == 1;
+            }
+            else{
+                self.perf_capability = false;
+            }
+
+            if ! self.perf_capability{
+                self.bit_width = 32;
+            }
+
+            }
     }
 
     pub fn get_version_identifier(&self)-> u8{
@@ -77,6 +99,10 @@ impl  PerfCounterControler{
     }
     pub fn get_unavailable_events_vec(&self)-> u8{
         self.unavailable_events_vec
+    }
+
+    pub fn get_perf_capability(&self)->bool{
+        self.perf_capability
     }
     
     ///Will clear overflow indicator for corresponding pmc in IA32_PERF_GLOBAL_STATUS
@@ -282,4 +308,5 @@ pub static mut PERFCNT_GLOBAL_CTRLER:PerfCounterControler = PerfCounterControler
     number_fixed_function_counter:0,
     bit_width_fixed_counter:0,
     unavailable_events_vec:0,
+    perf_capability:false,
 };
