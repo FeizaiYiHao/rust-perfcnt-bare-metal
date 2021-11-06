@@ -12,6 +12,8 @@ use globle_ctrl::PerfCounterControler;
 use x86::{msr::*, perfcnt::intel::{ EventDescription,Counter,Tuple}};
 pub const ENABLE_GENERAL_PMC_MASK: u64 = 0x1<<22;
 
+use globle_ctrl::PERFCNT_GLOBAL_CTRLER;
+
 #[derive(Debug)]
 pub enum ErrorMsg {
     CounterInUse,
@@ -33,6 +35,17 @@ pub struct PerfCounter{
 
 
 impl  PerfCounter{
+    pub fn new_default() -> PerfCounter{
+        unsafe{
+            PerfCounter{
+                global_ctrler: &PERFCNT_GLOBAL_CTRLER,
+                pmc_index: 0,
+                counter_type: Counter::Programmable(0),
+                general_pmc_mask: 0,
+                fixed_pmc_mask: 0,
+            }
+        }
+    }
     pub fn new(global_ctrler: &'static PerfCounterControler) -> PerfCounter{
         PerfCounter{
             global_ctrler: global_ctrler,
